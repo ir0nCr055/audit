@@ -33,6 +33,9 @@
     //Timer to refresh results table
     NSTimer *resultsRefreshTimer;
     
+    //Filehandle to Audit Event Pipe
+    NSFileHandle *auditTaskFileHandle;
+    
 }
 
 -(void)startTask;

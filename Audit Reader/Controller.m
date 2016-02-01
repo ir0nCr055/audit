@@ -187,11 +187,11 @@
     
 
     
-    NSFileHandle *fh=[[NSFileHandle alloc] initWithFileDescriptor:fileno(communicationsPipe) closeOnDealloc:YES];
+    auditTaskFileHandle=[[NSFileHandle alloc] initWithFileDescriptor:fileno(communicationsPipe) closeOnDealloc:YES];
     
     [self setupResultsRefreshTimer];
     
-    [fh waitForDataInBackgroundAndNotify];
+    [auditTaskFileHandle waitForDataInBackgroundAndNotify];
     
     
     NSMutableString *processListing=[NSMutableString string];
@@ -222,12 +222,14 @@
     NSMutableDictionary *newEntry=nil;
     BOOL completed=NO;
 
-    NSFileHandle *fh=[notification object];
+    NSFileHandle *fh=auditTaskFileHandle;
     NSData *data=[fh availableData];
     if ([data length]==0) {
         [startStopButton setTitle:@"Search"];
         isRunning=NO;
         [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
+        [auditTaskFileHandle release];
+        auditTaskFileHandle = nil;
     }
     NSArray *currToken;
     NSMutableArray *currentRecordTokens=[NSMutableArray arrayWithCapacity:10];
@@ -317,6 +319,9 @@
         [self tearDownRefreshTimer];
         [self killChildren];
         [startStopButton setTitle:@"Search"];
+        [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
+        [auditTaskFileHandle release];
+        auditTaskFileHandle = nil;
         return;
     }
     
