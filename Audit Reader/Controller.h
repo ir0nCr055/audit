@@ -29,10 +29,16 @@
     IBOutlet NSWindow *mainWindow;
     int pid;
     BOOL isRunning;
+    
+    //Timer to refresh results table
+    NSTimer *resultsRefreshTimer;
+    
 }
 
 -(void)startTask;
 -(void)killChildren;
 -(IBAction)searchButtonPressed:(id)sender;
 - (IBAction)updateFilter:sender;
+
+-(void)refreshResultsTable;
 @end

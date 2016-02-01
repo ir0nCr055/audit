@@ -45,6 +45,33 @@
     
     if (predicateEditor) [self startTask];
 }
+
+-(void)refreshResultsTable {
+    
+    if (resultsOutlineView) {
+        [resultsOutlineView reloadData];
+    }
+}
+
+-(void)setupResultsRefreshTimer {
+    
+    [self tearDownRefreshTimer];
+    
+    resultsRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                           target:self
+                                                         selector:@selector(refreshResultsTable)
+                                                         userInfo:nil
+                                                          repeats:YES];
+}
+
+-(void)tearDownRefreshTimer {
+    if (resultsRefreshTimer) {
+        [resultsRefreshTimer invalidate];
+        resultsRefreshTimer = nil;
+    }
+}
+
+
 -(void)startTask{
     
     NSString *startDateString=nil;
@@ -162,6 +189,8 @@
     
     NSFileHandle *fh=[[NSFileHandle alloc] initWithFileDescriptor:fileno(communicationsPipe) closeOnDealloc:YES];
     
+    [self setupResultsRefreshTimer];
+    
     [fh waitForDataInBackgroundAndNotify];
     
     
@@ -277,9 +306,6 @@
        // int insertHere=[[[treeController arrangedObjects] childNodes] count];
         for (id curObject in objectsToInsert) 
             [datasource addObjectAtRoot:curObject];
-
-        [resultsOutlineView reloadData];
-
     }
 
     [fh waitForDataInBackgroundAndNotify];
@@ -288,6 +314,7 @@
     
     if (isRunning==YES) {
         isRunning=NO;
+        [self tearDownRefreshTimer];
         [self killChildren];
         [startStopButton setTitle:@"Search"];
         return;
