@@ -9,7 +9,6 @@
 #import <Cocoa/Cocoa.h>
 
 @interface Audit_ReaderAppDelegate : NSObject <NSApplicationDelegate> {
-    NSWindow *window;
 }
 
 @property (assign) IBOutlet NSWindow *window;

@@ -13,7 +13,6 @@
 -(void)awakeFromNib{
     [self setFilteredTree:nil];;
     tree=[NSMutableDictionary dictionary];
-    [tree retain];
     [tree setObject:[NSMutableArray array] forKey:@"children"];
 }
 - (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item{
@@ -79,9 +78,9 @@
     NSSortDescriptor *sortDescriptor;
     NSString *key=[[[outlineView sortDescriptors] objectAtIndex:0] key];
     BOOL isAscending=[[[outlineView sortDescriptors] objectAtIndex:0] ascending];
-    sortDescriptor = [[[NSSortDescriptor alloc] initWithKey:key
+    sortDescriptor = [[NSSortDescriptor alloc] initWithKey:key
         
-                                                  ascending:isAscending] autorelease];
+                                                  ascending:isAscending];
     NSArray *sortDescriptors = [NSArray arrayWithObject:sortDescriptor];
     NSArray *sortedArray;
     NSMutableArray *currChildren=[tree objectForKey:@"children"];
@@ -118,16 +117,7 @@
     
 }
 -(void)setFilteredTree:(NSMutableDictionary *)inDict{
-    
-    [inDict retain];
-    [filteredTree release];
     filteredTree=inDict;
-    
-    
-}
--(void)dealloc{
-    [tree release];
-    [super dealloc];
 }
 -(void)compare:(id)sender{
     

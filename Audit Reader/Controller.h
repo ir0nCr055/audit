@@ -41,7 +41,6 @@
 -(void)startTask;
 -(void)killChildren;
 -(IBAction)searchButtonPressed:(id)sender;
-- (IBAction)updateFilter:sender;
 
 -(void)refreshResultsTable;
 @end

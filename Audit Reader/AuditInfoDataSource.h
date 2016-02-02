@@ -24,4 +24,5 @@
 -(void)addObjectAtRoot:(id)object;
 -(void)setFilteredTree:(NSMutableDictionary *)inDict;
 -(IBAction)filterWithString:(id)sender;
+-(void)deleteAll;
 @end

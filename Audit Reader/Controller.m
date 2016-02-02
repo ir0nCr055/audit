@@ -15,14 +15,11 @@
     
     isRunning=NO;
     partial=[NSMutableString string];
-    [partial retain];
     [predicateEditor addRow:self];
             
    // [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(rulesUpdated:) name:NSRuleEditorRowsDidChangeNotification object:nil];
 
     tokens=[NSDictionary dictionaryWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"AuditTokens" ofType:@"plist"]];
-    [tokens retain];
-    
     
 	//[resultsOutlineView setSortDescriptors:[NSArray arrayWithObjects:[[[NSSortDescriptor alloc] initWithKey:@"event" ascending:YES] autorelease],
        //                            [[[NSSortDescriptor alloc] initWithKey:@"date" ascending:YES] autorelease],
@@ -73,13 +70,13 @@
 
 
 -(void)startTask{
-    
-    NSString *startDateString=nil;
-    NSString *endDateString=nil;
+
     NSString *eventString=nil;
-    NSString *dateEventOccurred=nil;
     NSString *effectiveUserIdString=nil;
     NSString *effectiveGroupIdString=nil;
+    
+    NSDateFormatter *YearMonthDay = [[NSDateFormatter alloc] init];
+    [YearMonthDay setDateFormat:@"%Y%m%d"];
     
     NSMutableString *argString=[NSMutableString string];
     NSArray *predicates=[(NSCompoundPredicate *)([predicateEditor predicate]) subpredicates];
@@ -96,28 +93,20 @@
         if (!leftSide) continue;
         if ([leftSide isEqualToString:@"Start Date"]) {
             NSDate *startDate=(NSDate *)rightSide;
-            startDateString=[startDate descriptionWithCalendarFormat:@"%Y%m%d" timeZone:nil locale:nil];
-            [argString appendString:[NSString stringWithFormat:@"-a %@ ",startDateString]];
-            
+            [argString appendString:[NSString stringWithFormat:@"-a %@ ",[YearMonthDay stringFromDate:startDate]]];
         }
         else if ([leftSide isEqualToString:@"End Date"]) {
             NSDate *endDate=(NSDate *)rightSide;
-            endDateString=[endDate descriptionWithCalendarFormat:@"%Y%m%d" timeZone:nil locale:nil];
-            [argString appendString:[NSString stringWithFormat:@"-b %@ ",endDateString]];
+            [argString appendString:[NSString stringWithFormat:@"-b %@ ",[YearMonthDay stringFromDate:endDate]]];
 
         }
         else if ([leftSide isEqualToString:@"Event"]) {
-            
             eventString=rightSide;
             [argString appendString:[NSString stringWithFormat:@"-c %@\"%@\" ",modifier,eventString]];
-
         }
         else if ([leftSide isEqualToString:@"Date Event Occurred"]) {
             NSDate *onDate=(NSDate *)rightSide;
-            dateEventOccurred=[onDate descriptionWithCalendarFormat:@"%Y%m%d" timeZone:nil locale:nil];
-            [argString appendString:[NSString stringWithFormat:@"-d %@ ",dateEventOccurred]];
-
-            
+            [argString appendString:[NSString stringWithFormat:@"-d %@ ",[YearMonthDay stringFromDate:onDate]]];
         }
         else if ([leftSide isEqualToString:@"Effective user ID or name"]) {
             effectiveUserIdString=rightSide; 
@@ -132,25 +121,6 @@
         
     }
     
-  /*  if (task) {
-        [task terminate];
-        [task release];
-    }
-    
-    NSNotificationCenter *nc=[NSNotificationCenter defaultCenter];
-    [nc addObserver:self selector:@selector(fileDataReceived:) name:NSFileHandleDataAvailableNotification object:nil];
-
-    NSPipe *pipe=[NSPipe pipe];
-    NSFileHandle *fh=[pipe fileHandleForReading];
-    [fh waitForDataInBackgroundAndNotify];
-    task=[[NSTask alloc] init];
-    NSString *args=[NSString stringWithFormat:@"/usr/sbin/auditreduce %@ /var/audit/*|/usr/sbin/praudit -d \"|\"",argString];    
-
-    [task setArguments:[NSArray arrayWithObjects:@"-c",args,nil]];
-    [task setLaunchPath:@"/bin/sh"];
-    [task setStandardOutput:pipe];
-    [task launch];
-   */
     NSNotificationCenter *nc=[NSNotificationCenter defaultCenter];
     [nc addObserver:self selector:@selector(fileDataReceived:) name:NSFileHandleDataAvailableNotification object:nil];
 
@@ -228,7 +198,6 @@
         [startStopButton setTitle:@"Search"];
         isRunning=NO;
         [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
-        [auditTaskFileHandle release];
         auditTaskFileHandle = nil;
     }
     NSArray *currToken;
@@ -236,7 +205,6 @@
     NSString *output=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 
     NSMutableArray *objectsToInsert=[NSMutableArray array];
-    [output autorelease];
     if (![partial isEqualToString:@""]) 
         output=[partial stringByAppendingString:output];
     [partial setString:@""];
@@ -267,7 +235,7 @@
             else newEntry=nil;
 
             
-        } else if (currToken=[tokens objectForKey:command]) {
+        } else if ((currToken=[tokens objectForKey:command])) {
             int i;
 
             NSMutableArray *attributeArray=[NSMutableArray arrayWithCapacity:[recordArray count]];
@@ -320,7 +288,6 @@
         [self killChildren];
         [startStopButton setTitle:@"Search"];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
-        [auditTaskFileHandle release];
         auditTaskFileHandle = nil;
         return;
     }
@@ -350,7 +317,7 @@
     // Call AuthorizationCopyRights to determine or extend the allowable rights.
     status = AuthorizationCopyRights(authorization, &rights, NULL, flags, NULL);
     if (status != errAuthorizationSuccess) {
-        NSLog(@"Copy Rights Unsuccessful: %d", status);
+        NSLog(@"Copy Rights Unsuccessful: %d", (int)status);
         return;
     }
     
@@ -388,16 +355,5 @@
     
     
     [self setAuthorizationRef:[[lockView authorization] authorizationRef]];
-
-    
-    
-    
-    
-}
-
--(void)dealloc{
-
-    
-    [super dealloc];
 }
 @end
