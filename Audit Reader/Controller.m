@@ -7,6 +7,7 @@
 //
 
 #import "Controller.h"
+#import "AuditEventItem.h"
  
 
 @implementation Controller
@@ -16,23 +17,13 @@
     isRunning=NO;
     partial=[NSMutableString string];
     [predicateEditor addRow:self];
-            
-   // [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(rulesUpdated:) name:NSRuleEditorRowsDidChangeNotification object:nil];
-
+    
     tokens=[NSDictionary dictionaryWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"AuditTokens" ofType:@"plist"]];
     
-	//[resultsOutlineView setSortDescriptors:[NSArray arrayWithObjects:[[[NSSortDescriptor alloc] initWithKey:@"event" ascending:YES] autorelease],
-       //                            [[[NSSortDescriptor alloc] initWithKey:@"date" ascending:YES] autorelease],
-         //                          nil]];
-    
-
-    //[self startTaskWithFilter:[predicateEditor predicate]];
     [lockView setDelegate:self];
     [lockView setString:"system.privilege.admin"];
     [lockView setAutoupdate:YES];
     [lockView updateStatus:self];
-    
-
     
 }
     
@@ -186,10 +177,7 @@
     NSLog(@"pid is %i",pid);
 }
 -(void)fileDataReceived:(NSNotification *)notification{
-    
 
-
-    NSMutableDictionary *newEntry=nil;
     BOOL completed=NO;
 
     NSFileHandle *fh=auditTaskFileHandle;
@@ -199,19 +187,23 @@
         isRunning=NO;
         [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
         auditTaskFileHandle = nil;
+        return;
     }
     NSArray *currToken;
     NSMutableArray *currentRecordTokens=[NSMutableArray arrayWithCapacity:10];
     NSString *output=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 
-    NSMutableArray *objectsToInsert=[NSMutableArray array];
-    if (![partial isEqualToString:@""]) 
+    if (![partial isEqualToString:@""])  {
         output=[partial stringByAppendingString:output];
+    }
     [partial setString:@""];
     NSArray *record=[output componentsSeparatedByString:@"\n"];
-
+    
+    AuditEventItem *newAuditEventItem = nil;
+    NSMutableArray *foundAuditEvents = [NSMutableArray array];
 
     for (NSString *currString in record) {
+        
       // if (![partial isEqualToString:@""]) [partial appendString:@"\n"];
         [partial appendString:currString];
         NSArray *recordArray=[currString componentsSeparatedByString:@"|"];
@@ -219,20 +211,26 @@
         if ([command isEqualToString:@""]) continue;
         if ([command isEqualToString:@"header"]) {
             
-            if (newEntry && currentRecordTokens) {
-
-                [newEntry setObject:currentRecordTokens forKey:@"children"];
-                [objectsToInsert addObject:newEntry];
-
+            if (currentRecordTokens) {
                 currentRecordTokens=[NSMutableArray arrayWithCapacity:10];
+            }
+            
+            if (newAuditEventItem) {
+                [foundAuditEvents addObject:newAuditEventItem];
+                newAuditEventItem = nil;
             }
 
             if ([recordArray count]>5) {
-                newEntry=[NSMutableDictionary dictionaryWithObjectsAndKeys:[recordArray objectAtIndex:3],@"record",
-                                    [recordArray objectAtIndex:5],@"time",nil];
+                
                 completed=NO;
+                
+                NSString *dateString = [recordArray objectAtIndex:5];
+                NSString *eventName = [recordArray objectAtIndex:3];
+                
+                newAuditEventItem = [[AuditEventItem alloc] initWithEventString:eventName
+                                                                   andTimestamp:dateString
+                                                              andRawDescription:nil];
             }
-            else newEntry=nil;
 
             
         } else if ((currToken=[tokens objectForKey:command])) {
@@ -254,12 +252,31 @@
                              attributeArray,@"children",nil];
             
             [currentRecordTokens addObject:attributeHeader];
+            
+            if (newAuditEventItem) {
+                [newAuditEventItem.properties addObject:attributeHeader];
+            }
+            
             if ([command isEqualToString:@"return"] && [attributeArray count]>0) {
-                [newEntry setObject:[[attributeArray objectAtIndex:0] valueForKey:@"time"] forKey:@"status"];
+                
+                if (newAuditEventItem) {
+                    NSString *returnStatus = [[attributeArray objectAtIndex:0] valueForKey:@"time"];
+                    newAuditEventItem.returnStatus = returnStatus;
+                }
                 
             }
-            else if ([command isEqualToString:@"trailer"] && [attributeArray count]>0) {
-                [newEntry setObject:[partial lowercaseString] forKey:@"searchString"];
+            else if ([command isEqualToString:@"subject"] && [attributeArray count]>5) {
+                
+                if (newAuditEventItem) {
+                    NSString *processID = [[attributeArray objectAtIndex:5] valueForKey:@"time"];
+                    newAuditEventItem.processId = processID;
+                }
+            }
+            else if ([command isEqualToString:@"trailer"]) {
+                
+                if (newAuditEventItem) {
+                    newAuditEventItem.rawDescription = (NSString*)[partial copy];
+                }
                 [partial setString:@""];
                 completed=YES;
             }
@@ -267,15 +284,15 @@
 
             
     }
-
-    if (newEntry && completed==YES) {
-        [newEntry setObject:currentRecordTokens forKey:@"children"];
-        [datasource addObjectAtRoot:newEntry];
+    
+    if (foundAuditEvents.count) {
+        for (AuditEventItem *curItem in foundAuditEvents) {
+            [datasource addAuditEvent:curItem];
+        }
     }
-    if (objectsToInsert) {
-       // int insertHere=[[[treeController arrangedObjects] childNodes] count];
-        for (id curObject in objectsToInsert) 
-            [datasource addObjectAtRoot:curObject];
+    
+    if (newAuditEventItem && completed == YES) {
+        [datasource addAuditEvent:newAuditEventItem];
     }
 
     [fh waitForDataInBackgroundAndNotify];

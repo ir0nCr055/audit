@@ -11,118 +11,128 @@
 
 @implementation AuditInfoDataSource
 -(void)awakeFromNib{
-    [self setFilteredTree:nil];;
-    tree=[NSMutableDictionary dictionary];
-    [tree setObject:[NSMutableArray array] forKey:@"children"];
+    self.auditEvents = [NSMutableArray array];
+    self.filteredEvents = [NSMutableArray array];
 }
-- (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item{
-    NSDictionary *currDict=(filteredTree==nil)?tree:filteredTree;
 
-    if (item==nil) return [[currDict objectForKey:@"children"] objectAtIndex:index];
+-(NSMutableArray*)source {
+    
+    return (self.filterString && self.filterString.length) ? self.filteredEvents : self.auditEvents;
+    
+}
 
-    return [[item objectForKey:@"children"] objectAtIndex:index];
-}
-- (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item{
-    if ([item objectForKey:@"children"] && [[item objectForKey:@"children"] count]>0) return YES;
-    return NO;
-}
-- (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item{
-    NSDictionary *currDict=(filteredTree==nil)?tree:filteredTree;
-
-    if (item==nil) return [[currDict objectForKey:@"children"] count];
-    if ([item objectForKey:@"children"]) return [[item objectForKey:@"children"] count];
-    return NO;
-}
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)aTableView{
-    NSDictionary *currDict=(filteredTree==nil)?tree:filteredTree;
-
-    return [[currDict objectForKey:@"children"] count];
-    
-    
+    @synchronized(self) {
+        
+        [self refreshFilteredEvents];
+        
+        return [self source].count;
+    }
 }
 
 - (id)tableView:(NSTableView *)aTableView objectValueForTableColumn:(NSTableColumn *)aTableColumn row:(NSInteger)rowIndex{
-    //NSLog(@"id is %@",[aTableColumn identifier]);
-
-    NSDictionary *currDict=(filteredTree==nil)?tree:filteredTree;
-  //  NSLog(@"%@",[[[currDict objectForKey:@"children"] objectAtIndex:rowIndex]valueForKey:[aTableColumn identifier]]);
-    return [[[currDict objectForKey:@"children"] objectAtIndex:rowIndex]valueForKey:[aTableColumn identifier]];
-    
-}
-- (id)outlineView:(NSOutlineView *)outlineView objectValueForTableColumn:(NSTableColumn *)tableColumn byItem:(id)item{
-    NSDictionary *currDict=(filteredTree==nil)?tree:filteredTree;
-
-    if (item==nil) {
-        return [currDict valueForKey:[tableColumn identifier]];
+    @synchronized(self) {
+        NSString *columnId = aTableColumn.identifier;
         
+        AuditEventItem *theItem = [[self source] objectAtIndex:rowIndex];
+        
+        NSString *returnObject = nil;
+        
+        if ([@"event" isEqualToString:columnId]) {
+            returnObject = theItem.event;
+        }
+        else if ([@"processId" isEqualToString:columnId]) {
+            returnObject = theItem.processId;
+        }
+        else if ([@"time" isEqualToString:columnId]) {
+            returnObject = theItem.timestamp.description;
+        }
+        else if ([@"description" isEqualToString:columnId]) {
+            returnObject = theItem.rawDescription;
+        }
+        else if ([@"status" isEqualToString:columnId]) {
+            returnObject = theItem.returnStatus;
+        }
+        return returnObject;
+
     }
-    return [item valueForKey:[tableColumn identifier]];
 }
 
--(void)addObjectAtRoot:(id)object{
-    NSMutableArray *children=[tree objectForKey:@"children"];
-    [children addObject:object];
-    
-    
-}
 -(void)deleteAll{
-    [tree removeAllObjects];
-    [tree setObject:[NSMutableArray array] forKey:@"children"];
-
+    @synchronized(self) {
+        [self.auditEvents removeAllObjects];
+        [self.filteredEvents removeAllObjects];
+    }
 }
 - (void)tableView:(NSTableView *)aTableView sortDescriptorsDidChange:(NSArray *)oldDescriptors{
     NSLog(@"  tableView"); 
     
 }
-- (void)outlineView:(NSOutlineView *)outlineView sortDescriptorsDidChange:(NSArray *)oldDescriptors{
-    NSSortDescriptor *sortDescriptor;
-    NSString *key=[[[outlineView sortDescriptors] objectAtIndex:0] key];
-    BOOL isAscending=[[[outlineView sortDescriptors] objectAtIndex:0] ascending];
-    sortDescriptor = [[NSSortDescriptor alloc] initWithKey:key
+
+-(void)refreshFilteredEvents {
+    
+    NSString *theFilterString = self.filterString;
+    
+    if (theFilterString && theFilterString.length) {
         
-                                                  ascending:isAscending];
-    NSArray *sortDescriptors = [NSArray arrayWithObject:sortDescriptor];
-    NSArray *sortedArray;
-    NSMutableArray *currChildren=[tree objectForKey:@"children"];
-    sortedArray = [currChildren sortedArrayUsingDescriptors:sortDescriptors];
-    [tree setObject:sortedArray forKey:@"children"];
-    [outlineView reloadData];
+        NSPredicate *filterStringPredicate = [NSPredicate predicateWithBlock:^BOOL(id  _Nonnull evaluatedObject, NSDictionary<NSString *,id> * _Nullable bindings) {
+            AuditEventItem *curItem = (AuditEventItem*)evaluatedObject;
+            
+            BOOL matchFound = NO;
+            
+            if (curItem.event && [curItem.event rangeOfString:theFilterString].location != NSNotFound) {
+                matchFound = YES;
+            }
+            else if (curItem.processId && [curItem.processId rangeOfString:theFilterString].location != NSNotFound) {
+                matchFound = YES;
+            }
+            else if (curItem.rawDescription && [curItem.rawDescription rangeOfString:theFilterString].location != NSNotFound) {
+                matchFound = YES;
+            }
+            else if (curItem.timestamp && [curItem.timestamp.description rangeOfString:theFilterString].location != NSNotFound) {
+                matchFound = YES;
+            }
+            else if (curItem.returnStatus && [curItem.returnStatus rangeOfString:theFilterString].location != NSNotFound) {
+                matchFound = YES;
+            }
+            
+            return matchFound;
+            
+        }];
+        
+        
+        [self.filteredEvents setArray:[self.auditEvents filteredArrayUsingPredicate:filterStringPredicate]];
+        
+    }
+    
 }
 
 -(IBAction)filterWithString:(id)sender{
 
-    NSLog(@"filter");
-    NSString *inFilter=[sender stringValue];
-    if ([inFilter isEqualToString:@""]) {
-        [self setFilteredTree:nil];
+    @synchronized(self) {
+        NSLog(@"filter");
+        NSString *newFilterString = [sender stringValue];
+        self.filterString = newFilterString;
+        
+        [self refreshFilteredEvents];
+        
         [dataOutlineView reloadData];
-        return;
     }
-    else {
-        [self setFilteredTree:[NSMutableDictionary dictionary]];
-        
-    }
-    NSArray *children=[tree objectForKey:@"children"];
-    NSMutableArray *filteredChildren=[NSMutableArray array];
-    for (NSDictionary *curEntry in children) {
-        NSString *curSearchBlob=[curEntry objectForKey:@"searchString"];
-        if ([curSearchBlob rangeOfString:[inFilter lowercaseString]].length!=0) { // found
-            [filteredChildren addObject:curEntry];
-        }
-        
-    }
-    [filteredTree setObject:filteredChildren forKey:@"children"];
-    [dataOutlineView reloadData];
-    
-    
 }
--(void)setFilteredTree:(NSMutableDictionary *)inDict{
-    filteredTree=inDict;
-}
+
 -(void)compare:(id)sender{
     
     
     NSLog(@"compare");
+}
+
+
+-(void)addAuditEvent:(AuditEventItem*)auditEvent {
+    @synchronized(self) {
+        if (auditEvent) {
+            [self.auditEvents addObject:auditEvent];
+        }
+    }
 }
 
 @end
