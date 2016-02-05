@@ -9,7 +9,7 @@
 #import <Foundation/Foundation.h>
 #import "AuditEventItem.h"
 
-@interface AuditInfoDataSource : NSObject <NSTableViewDataSource> {
+@interface AuditInfoDataSource : NSObject <NSTableViewDataSource, NSTableViewDelegate> {
 
     IBOutlet id dataOutlineView;
 }

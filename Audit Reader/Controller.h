@@ -13,8 +13,6 @@
 
 @interface Controller : NSObject {
 
-    IBOutlet id resultsOutlineView;
-
     NSDictionary *tokens;
     IBOutlet NSPredicateEditor *predicateEditor;
     NSTask *task;
@@ -29,6 +27,7 @@
     IBOutlet NSWindow *mainWindow;
     int pid;
     BOOL isRunning;
+    int filteringPID;
     
     //Timer to refresh results table
     NSTimer *resultsRefreshTimer;
@@ -37,6 +36,7 @@
     NSFileHandle *auditTaskFileHandle;
     
 }
+@property (weak) IBOutlet NSTableView *resultsTableView;
 
 -(void)startTask;
 -(void)killChildren;

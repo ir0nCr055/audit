@@ -15,9 +15,10 @@
 -(void)awakeFromNib{
     
     isRunning=NO;
+    filteringPID = -1;
     partial=[NSMutableString string];
-    [predicateEditor addRow:self];
-    
+    [predicateEditor addRow:nil];
+    [predicateEditor addRow:nil];
     tokens=[NSDictionary dictionaryWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"AuditTokens" ofType:@"plist"]];
     
     [lockView setDelegate:self];
@@ -26,18 +27,11 @@
     [lockView updateStatus:self];
     
 }
-    
-
--(void)rulesUpdated:(id)sender{
-    
-    
-    if (predicateEditor) [self startTask];
-}
 
 -(void)refreshResultsTable {
     
-    if (resultsOutlineView) {
-        [resultsOutlineView reloadData];
+    if (self.resultsTableView) {
+        [self.resultsTableView reloadData];
     }
 }
 
@@ -80,7 +74,7 @@
         
         NSString *leftSide=[[curPred leftExpression] keyPath];
 
-        NSString *rightSide=[[curPred rightExpression] constantValue];
+        id rightSide=[[curPred rightExpression] constantValue];
         if (!leftSide) continue;
         if ([leftSide isEqualToString:@"Start Date"]) {
             NSDate *startDate=(NSDate *)rightSide;
@@ -89,7 +83,6 @@
         else if ([leftSide isEqualToString:@"End Date"]) {
             NSDate *endDate=(NSDate *)rightSide;
             [argString appendString:[NSString stringWithFormat:@"-b %@ ",[YearMonthDay stringFromDate:endDate]]];
-
         }
         else if ([leftSide isEqualToString:@"Event"]) {
             eventString=rightSide;
@@ -109,6 +102,13 @@
             [argString appendString:[NSString stringWithFormat:@"-f \"%@\" ",effectiveGroupIdString]];
 
         }
+        else if ([leftSide isEqualToString:@"Process ID"]) {
+            
+            NSString *filteredPID = (NSString*)rightSide;
+            if (filteredPID && filteredPID.length) {
+                filteringPID = filteredPID.intValue;
+            }
+        }
         
     }
     
@@ -116,7 +116,7 @@
     [nc addObserver:self selector:@selector(fileDataReceived:) name:NSFileHandleDataAvailableNotification object:nil];
 
 
-    NSString *args=[NSString stringWithFormat:@"echo pid $$ end && /usr/sbin/auditreduce %@ /var/audit/*|/usr/sbin/praudit -d \"|\"",argString];
+    NSString *args=[NSString stringWithFormat:@"echo pid $$ end && /usr/sbin/auditreduce %@ /dev/auditpipe|/usr/sbin/praudit -d \"|\"",argString];
     const char *argsCstring=[args UTF8String];
     const char *pathToTool="/bin/sh";
     AuthorizationFlags flags = kAuthorizationFlagDefaults |
@@ -187,6 +187,7 @@
         isRunning=NO;
         [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
         auditTaskFileHandle = nil;
+        filteringPID = -1;
         return;
     }
     NSArray *currToken;
@@ -204,8 +205,9 @@
 
     for (NSString *currString in record) {
         
-      // if (![partial isEqualToString:@""]) [partial appendString:@"\n"];
-        [partial appendString:currString];
+        if (currString.length && ![currString hasPrefix:@"pid "]) {
+            [partial appendFormat:@"%@\n", currString];
+        }
         NSArray *recordArray=[currString componentsSeparatedByString:@"|"];
         NSString *command=[[recordArray objectAtIndex:0] stringByReplacingOccurrencesOfString:@" " withString:@""];
         if ([command isEqualToString:@""]) continue;
@@ -216,7 +218,10 @@
             }
             
             if (newAuditEventItem) {
-                [foundAuditEvents addObject:newAuditEventItem];
+                
+                if ((filteringPID > -1 && newAuditEventItem.processId.intValue == filteringPID) || filteringPID <= -1) {
+                    [foundAuditEvents addObject:newAuditEventItem];
+                }
                 newAuditEventItem = nil;
             }
 
@@ -233,7 +238,9 @@
             }
 
             
-        } else if ((currToken=[tokens objectForKey:command])) {
+        }
+        else if ((currToken=[tokens objectForKey:command]))
+        {
             int i;
 
             NSMutableArray *attributeArray=[NSMutableArray arrayWithCapacity:[recordArray count]];
@@ -267,8 +274,9 @@
             }
             else if ([command isEqualToString:@"subject"] && [attributeArray count]>5) {
                 
+                NSUInteger pidField = attributeArray.count - (1 + 3);
                 if (newAuditEventItem) {
-                    NSString *processID = [[attributeArray objectAtIndex:5] valueForKey:@"time"];
+                    NSString *processID = [[attributeArray objectAtIndex:pidField] valueForKey:@"time"];
                     newAuditEventItem.processId = processID;
                 }
             }
@@ -281,8 +289,6 @@
                 completed=YES;
             }
         }
-
-            
     }
     
     if (foundAuditEvents.count) {
@@ -292,7 +298,9 @@
     }
     
     if (newAuditEventItem && completed == YES) {
-        [datasource addAuditEvent:newAuditEventItem];
+        if ((filteringPID > -1 && newAuditEventItem.processId.intValue == filteringPID) || filteringPID <= -1) {
+            [datasource addAuditEvent:newAuditEventItem];
+        }
     }
 
     [fh waitForDataInBackgroundAndNotify];
@@ -306,11 +314,12 @@
         [startStopButton setTitle:@"Search"];
         [[NSNotificationCenter defaultCenter] removeObserver:self name:NSFileHandleDataAvailableNotification object:nil];
         auditTaskFileHandle = nil;
+        filteringPID = -1;
         return;
     }
     
     [datasource deleteAll];
-    [resultsOutlineView reloadData];
+    [self refreshResultsTable];
     [startStopButton setTitle:@"Stop"];
 
     if (predicateEditor) [self startTask];
@@ -352,9 +361,6 @@
     
     
 }
-- (void)outlineView:(NSOutlineView *)outlineView sortDescriptorsDidChange:(NSArray *)oldDescriptors{
-    NSLog(@"  outlineView"); 
-}
 
 -(void)setAuthorizationRef:(AuthorizationRef)ref{
     
@@ -362,10 +368,6 @@
     
 
     
-}
-- (void)tableView:(NSTableView *)aTableView sortDescriptorsDidChange:(NSArray *)oldDescriptors{
-    NSLog(@"  tableView"); 
-
 }
 
 - (void)authorizationViewDidAuthorize:(SFAuthorizationView *)view{

@@ -8,11 +8,14 @@
 
 #import "AuditInfoDataSource.h"
 
+#define kAuditEventResultsTextCellIdentifier    (@"AuditEventTextCell")
+
 
 @implementation AuditInfoDataSource
 -(void)awakeFromNib{
     self.auditEvents = [NSMutableArray array];
     self.filteredEvents = [NSMutableArray array];
+    self.filterString = nil;
 }
 
 -(NSMutableArray*)source {
@@ -24,37 +27,74 @@
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)aTableView{
     @synchronized(self) {
         
+        NSInteger count = 0;
+        
         [self refreshFilteredEvents];
         
-        return [self source].count;
+        NSArray *source = (NSArray*)[self source];
+        
+        if (source) {
+            count = source.count;
+        }
+        
+        return count;
     }
 }
 
-- (id)tableView:(NSTableView *)aTableView objectValueForTableColumn:(NSTableColumn *)aTableColumn row:(NSInteger)rowIndex{
+-(id)tableView:(NSTableView*)aTableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row {
+    
     @synchronized(self) {
-        NSString *columnId = aTableColumn.identifier;
+        NSString *columnId = tableColumn.identifier;
         
-        AuditEventItem *theItem = [[self source] objectAtIndex:rowIndex];
+        NSArray *source = (NSArray*)[self source];
         
-        NSString *returnObject = nil;
+        NSTextField *returnObject = [aTableView makeViewWithIdentifier:kAuditEventResultsTextCellIdentifier
+                                                                 owner:self];
         
-        if ([@"event" isEqualToString:columnId]) {
-            returnObject = theItem.event;
+        if (returnObject == nil) {
+            returnObject = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, aTableView.frame.size.width, 0)];
+            returnObject.drawsBackground = NO;
+            returnObject.identifier = kAuditEventResultsTextCellIdentifier;
         }
-        else if ([@"processId" isEqualToString:columnId]) {
-            returnObject = theItem.processId;
-        }
-        else if ([@"time" isEqualToString:columnId]) {
-            returnObject = theItem.timestamp.description;
-        }
-        else if ([@"description" isEqualToString:columnId]) {
-            returnObject = theItem.rawDescription;
-        }
-        else if ([@"status" isEqualToString:columnId]) {
-            returnObject = theItem.returnStatus;
+        
+        if (source && source.count && (source.count - 1 >= row)) {
+            
+            AuditEventItem *theItem = [source objectAtIndex:row];
+            
+            if ([@"event" isEqualToString:columnId]) {
+                returnObject.stringValue = (theItem.event ? theItem.event : @"");
+            }
+            else if ([@"processId" isEqualToString:columnId]) {
+                returnObject.stringValue = (theItem.processId ? theItem.processId : @"");
+            }
+            else if ([@"time" isEqualToString:columnId]) {
+                returnObject.stringValue = (theItem.timeDescription ? theItem.timeDescription : @"");
+            }
+            else if ([@"description" isEqualToString:columnId]) {
+                returnObject.stringValue = (theItem.rawDescription ? theItem.rawDescription : @"");
+            }
+            else if ([@"status" isEqualToString:columnId]) {
+                returnObject.stringValue = (theItem.returnStatus ? theItem.returnStatus : @"");
+            }
+            else if ([@"process" isEqualToString:columnId]) {
+                returnObject.stringValue = (theItem.processName ? theItem.processName : @"");
+            }
         }
         return returnObject;
+    }
+}
 
+-(CGFloat)tableView:(NSTableView*)aTableView heightOfRow:(NSInteger)row {
+    @synchronized(self) {
+        CGFloat descriptionHeight = 17.0;
+        AuditEventItem *theEvent = [[self source] objectAtIndex:row];
+        if (theEvent) {
+            NSString *theEventDescription = theEvent.rawDescription;
+            if (theEventDescription) {
+                descriptionHeight = (double)([theEventDescription componentsSeparatedByString:@"\n"].count) * 17.0;
+            }
+        }
+        return descriptionHeight;
     }
 }
 
@@ -77,22 +117,26 @@
         
         NSPredicate *filterStringPredicate = [NSPredicate predicateWithBlock:^BOOL(id  _Nonnull evaluatedObject, NSDictionary<NSString *,id> * _Nullable bindings) {
             AuditEventItem *curItem = (AuditEventItem*)evaluatedObject;
+            NSString *processName = curItem.processName;
             
             BOOL matchFound = NO;
             
-            if (curItem.event && [curItem.event rangeOfString:theFilterString].location != NSNotFound) {
+            if (curItem.event && [curItem.event rangeOfString:theFilterString options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 matchFound = YES;
             }
-            else if (curItem.processId && [curItem.processId rangeOfString:theFilterString].location != NSNotFound) {
+            else if (curItem.processId && [curItem.processId rangeOfString:theFilterString options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 matchFound = YES;
             }
-            else if (curItem.rawDescription && [curItem.rawDescription rangeOfString:theFilterString].location != NSNotFound) {
+            else if (curItem.rawDescription && [curItem.rawDescription rangeOfString:theFilterString options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 matchFound = YES;
             }
-            else if (curItem.timestamp && [curItem.timestamp.description rangeOfString:theFilterString].location != NSNotFound) {
+            else if (curItem.timeDescription && [curItem.timeDescription rangeOfString:theFilterString options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 matchFound = YES;
             }
-            else if (curItem.returnStatus && [curItem.returnStatus rangeOfString:theFilterString].location != NSNotFound) {
+            else if (curItem.returnStatus && [curItem.returnStatus rangeOfString:theFilterString options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                matchFound = YES;
+            }
+            else if (processName && [processName rangeOfString:theFilterString options:NSCaseInsensitiveSearch].location != NSNotFound) {
                 matchFound = YES;
             }
             
